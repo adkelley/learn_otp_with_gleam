@@ -22,7 +22,8 @@ pub fn main() {
 
   // In a real application, `open_pantry` might get the current contents of the pantry from
   // a database, but for this example the pantry will always start out empty
-  let assert Ok(pantry) = pantry.new()
+  let assert Ok(started) = pantry.new()
+  let pantry = started.data
 
   // Trying to remove an item from an empty pantry should return an error
   let assert Error(_) = pantry.take_item(pantry, "flour")
