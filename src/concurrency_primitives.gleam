@@ -12,18 +12,14 @@ pub fn main() {
   let pid = process.self()
   io.println("Current process id: " <> string.inspect(pid))
 
-  // We can spawn a new process using the `start` function. It takes two
-  // arguments: a function to run in the new process, and a boolean indicating 
-  // whether the new process should be "linked" to the current process.
-  // "Linked" processes fail together (one crashing causes the other to crash).
+  // We can spawn a new process using the `spawn` function. It takes
+  // a function to run in the new process, and the new process will be "linked" to
+  // the current process. "Linked" processes fail together (one crashing causes the other to crash).
   // The link is bidirectional.
-  process.start(
-    fn() {
-      let pid = process.self()
-      io.println("New process id: " <> string.inspect(pid))
-    },
-    True,
-  )
+  process.spawn(fn() {
+    let pid = process.self()
+    io.println("New process id: " <> string.inspect(pid))
+  })
 
   // Doing work in other processes is well and good, but if we want to
   // send messages between different processes, we need a `Subject`.
@@ -34,7 +30,7 @@ pub fn main() {
 
   // Once we have a subject, we can use it to send messages to the owner
   // process from any other process.
-  process.start(fn() { process.send(subj, "hello, world") }, True)
+  process.spawn(fn() { process.send(subj, "hello, world") })
 
   // The `receive` function is used to listen for messages sent to the subject.
   let assert Ok("hello, world") = process.receive(subj, 1000)
@@ -52,13 +48,10 @@ pub fn main() {
 
   // Here we spawn a new process, and use the subjects to send messages
   // back to our current process.
-  process.start(
-    fn() {
-      process.send(subj, "goodbye, mars")
-      process.send(subj2, "whats up, pluto")
-    },
-    True,
-  )
+  process.spawn(fn() {
+    process.send(subj, "goodbye, mars")
+    process.send(subj2, "whats up, pluto")
+  })
 
   // We can use each subject to receive the specific message we care about,
   // and we don't have to worry about the order in which the messages are sent.
@@ -93,10 +86,7 @@ pub fn main() {
   // Subjects help us organize that mailbox, but you can't swap 
   // mailboxes with your neighbor.
 
-  process.start(
-    fn() { process.send(subject, "hello from some rando process") },
-    True,
-  )
+  process.spawn(fn() { process.send(subject, "hello from some rando process") })
 
   let assert Ok("hello from some rando process") =
     process.receive(subject, 1000)
@@ -124,17 +114,16 @@ pub fn main() {
   let subject2: Subject(String) = process.new_subject()
   let selector =
     process.new_selector()
-    |> process.selecting(subject1, int.to_string)
-    |> process.selecting(subject2, function.identity)
+    |> process.select_map(subject1, int.to_string)
+    |> process.select_map(subject2, function.identity)
 
-  process.start(fn() { process.send(subject1, 1) }, True)
-  process.start(fn() { process.send(subject2, "2") }, True)
+  process.spawn(fn() { process.send(subject1, 1) })
+  process.spawn(fn() { process.send(subject2, "2") })
 
-  let assert Ok(some_str) = process.select(selector, 1000)
+  let assert Ok(some_str) = process.selector_receive(selector, 1000)
   io.println("Received: " <> some_str)
-  let assert Ok(some_str_2) = process.select(selector, 1000)
+  let assert Ok(some_str_2) = process.selector_receive(selector, 1000)
   io.println("Received: " <> some_str_2)
-
   // Hopefully this introduction made sense. If you're reading in the recommended order,
   // head over to tasks.gleam next.
 }
