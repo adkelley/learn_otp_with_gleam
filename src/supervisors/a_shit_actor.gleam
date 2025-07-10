@@ -12,7 +12,6 @@
 //// game is often called "Duck, Duck, Grey Duck".)
 
 import gleam/erlang/process.{type Subject}
-import gleam/function
 import gleam/otp/actor
 import prng/random
 
@@ -37,41 +36,30 @@ import prng/random
 /// This isn't a hack, it's the intended design. The subject
 /// produced by the `actor.start_spec` function is for the
 /// supervisor to use, not for us to use directly.
-pub fn start(
-  _input: Nil,
-  parent_subject: Subject(Subject(Message)),
-) -> Result(Subject(Message), actor.StartError) {
-  actor.start_spec(actor.Spec(
-    init: fn() {
-      // Create a new subject and send it to the parent process,
-      // so that the parent process can send us messages.
-      let actor_subject = process.new_subject()
-      process.send(parent_subject, actor_subject)
+fn actor_child(init init, loop loop) {
+  actor.new_with_initialiser(50, init)
+  |> actor.on_message(loop)
+  |> actor.start
+}
 
-      // Initialize the actor.
-      // Notice we provide a selector rather than a simple subject.
-      //
-      // We can send out multiple subjects on startup if we want, 
-      // so the actor can be communicated with from multiple processes.
-      // The selector allows us to handle messages as they come in, no
-      // matter which subject they were sent to.
-      //
-      // In our case, we only send out the one subject though.
+pub fn start(parent_subject: Subject(Subject(Message))) {
+  fn() {
+    actor_child(
+      init: fn(_) {
+        let actor_subject = process.new_subject()
+        process.send(parent_subject, actor_subject)
+        let selector =
+          process.new_selector()
+          |> process.select(actor_subject)
 
-      let selector =
-        process.new_selector()
-        |> process.selecting(actor_subject, function.identity)
-
-      actor.Ready(Nil, selector)
-    },
-    // You might call other processes to start up your actor,
-    // so we set a timeout to prevent the supervisor from
-    // waiting forever for the actor to start.
-    init_timeout: 1000,
-    // This is the function that will be called when the actor
-    // gets sent a message. We'll define it below.
-    loop: handle_message,
-  ))
+        Ok(
+          actor.initialised(Nil)
+          |> actor.selecting(selector),
+        )
+      },
+      loop: handle_message,
+    )
+  }
 }
 
 /// We provide this function in case we want to manually stop the actor,
@@ -83,13 +71,12 @@ pub fn shutdown(subject: Subject(Message)) -> Nil {
 /// This is how we play the game.
 /// We are at the whim of the child as to whether we are a 
 /// humble duck or the mighty goose.
-pub fn play_game(
-  subject: Subject(Message),
-) -> Result(String, process.CallError(String)) {
-  let msg_generator = random.weighted(#(9.0, Duck), [#(1.0, Goose)])
+pub fn play_game(subject: Subject(Message)) {
+  // -> Result(String, process.CallError(String)) {
+  let msg_generator = random.weighted(#(90.0, Duck), [#(10.0, Goose)])
   let msg = random.random_sample(msg_generator)
 
-  process.try_call(subject, msg, 1000)
+  process.call(subject, 1000, msg)
 }
 
 /// This is the type of messages that the actor will receive.
@@ -102,13 +89,18 @@ pub type Message {
 }
 
 /// And finally, we play the game
-fn handle_message(message: Message, _state: Nil) -> actor.Next(Message, Nil) {
+fn handle_message(state: Nil, message: Message) -> actor.Next(Nil, Message) {
   case message {
     Duck(client) -> {
       actor.send(client, "duck")
-      actor.continue(Nil)
+      actor.continue(state)
     }
-    Goose(_) -> panic as "Oh shit it's a fucking goose!!!!"
-    Shutdown -> actor.Stop(process.Normal)
+    Goose(client) -> {
+      actor.send(client, "goose!!!!")
+      actor.stop_abnormal("goose!!!!")
+    }
+    Shutdown -> {
+      actor.stop()
+    }
   }
 }

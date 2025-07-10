@@ -55,7 +55,8 @@
 
 import gleam/erlang/process.{type Subject}
 import gleam/io
-import gleam/otp/supervisor
+import gleam/otp/static_supervisor as supervisor
+import gleam/otp/supervision
 import supervisors/a_shit_actor as duckduckgoose
 
 pub fn main() {
@@ -67,20 +68,20 @@ pub fn main() {
   // us messages with on init. Remember, it needs to send us back a subject so we 
   // can talk to it directly.
   let parent_subject = process.new_subject()
-  let game = supervisor.worker(duckduckgoose.start(_, parent_subject))
-
-  // The supervisor API is really simple. All a supervisor needs is a function
-  // with which to intialize itself.
-  // There's a `supervisor.start_spec` function as well for tuning the 
-  // restart frequency and the initial state to pass to children.
+  let worker = duckduckgoose.start(parent_subject) |> supervision.worker()
 
   // We start the supervisor
-  let assert Ok(_supervisor_subject) = supervisor.start(supervisor.add(_, game))
+  // The supervisor API is really simple. All a supervisor needs is a function
+  // with which to intialize itself.
+  let assert Ok(_supervisor) =
+    supervisor.new(supervisor.OneForOne)
+    |> supervisor.add(worker)
+    |> supervisor.restart_tolerance(100, 5000)
+    |> supervisor.start
 
   // The actor's init function sent us a subject for us to be able
   // to send it messages
   let assert Ok(game_subject) = process.receive(parent_subject, 1000)
-
   // Let's play the game a bit
   play_game(parent_subject, game_subject, 100)
 }
@@ -97,26 +98,23 @@ fn play_game(
     0 -> Nil
     _ -> {
       case duckduckgoose.play_game(game_subject) {
-        // We're just a normal old duck, so we keep playing
-        Ok(msg) -> {
-          io.println(msg)
+        "duck" -> {
+          io.println("duck")
           play_game(parent_subject, game_subject, n - 1)
         }
-
         // Oh no, a goose crashed our actor!
-        Error(_) -> {
+        _ -> {
           io.println("Oh no, a goose crashed our actor!")
-
           // The supervisor should restart our actor for us,
           // but it'll be on a different process now! Don't 
           // worry though, the game's init function should
           // send us a new subject to use.
           let assert Ok(new_game_subject) =
             process.receive(parent_subject, 1000)
-
           // Keep playing the game with the new subject
           play_game(parent_subject, new_game_subject, n - 1)
         }
+        // We're just a normal old duck, so we keep playing
       }
     }
   }
