@@ -42,12 +42,15 @@ fn actor_child(init init, loop loop) {
   |> actor.start
 }
 
-pub fn start(parent_subject: Subject(Subject(Message))) {
+pub fn start(
+  parent_subject: Subject(Subject(Message)),
+) -> fn() -> Result(actor.Started(Nil), actor.StartError) {
   fn() {
     actor_child(
       init: fn(_) {
         let actor_subject = process.new_subject()
         process.send(parent_subject, actor_subject)
+        process.trap_exits(True)
         let selector =
           process.new_selector()
           |> process.select(actor_subject)
@@ -71,7 +74,7 @@ pub fn shutdown(subject: Subject(Message)) -> Nil {
 /// This is how we play the game.
 /// We are at the whim of the child as to whether we are a 
 /// humble duck or the mighty goose.
-pub fn play_game(subject: Subject(Message)) {
+pub fn play_game(subject: Subject(Message)) -> String {
   // -> Result(String, process.CallError(String)) {
   let msg_generator = random.weighted(#(90.0, Duck), [#(10.0, Goose)])
   let msg = random.random_sample(msg_generator)

@@ -82,6 +82,7 @@ pub fn main() {
   // The actor's init function sent us a subject for us to be able
   // to send it messages
   let assert Ok(game_subject) = process.receive(parent_subject, 1000)
+
   // Let's play the game a bit
   play_game(parent_subject, game_subject, 100)
 }
@@ -97,24 +98,26 @@ fn play_game(
     // Base Case, recess is over
     0 -> Nil
     _ -> {
-      case duckduckgoose.play_game(game_subject) {
-        "duck" -> {
-          io.println("duck")
+      let xs = duckduckgoose.play_game(game_subject)
+      // The result of process receive tells us whether
+      // we are a goose or a duck
+      case process.receive(parent_subject, 50) {
+        // It's a duck because there's no message in our inbox
+        Error(Nil) -> {
+          io.println(xs)
+          // We're just a normal old duck, so we keep playing
           play_game(parent_subject, game_subject, n - 1)
         }
-        // Oh no, a goose crashed our actor!
-        _ -> {
+        // The supervisor should restart our actor for us,
+        // but it'll be on a different process now! Don't 
+        // worry though, the game's init function should
+        // send us a new subject to use.
+        Ok(new_game_subject) -> {
+          io.println(xs)
           io.println("Oh no, a goose crashed our actor!")
-          // The supervisor should restart our actor for us,
-          // but it'll be on a different process now! Don't 
-          // worry though, the game's init function should
-          // send us a new subject to use.
-          let assert Ok(new_game_subject) =
-            process.receive(parent_subject, 1000)
           // Keep playing the game with the new subject
           play_game(parent_subject, new_game_subject, n - 1)
         }
-        // We're just a normal old duck, so we keep playing
       }
     }
   }
