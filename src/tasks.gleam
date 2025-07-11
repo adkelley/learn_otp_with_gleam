@@ -1,19 +1,19 @@
 //// Tasks are one off processes meant to easily make synchronous work async.
 //// They're really straightforward to use, just fire them off and check back later.
 
+import birl
+import birl/duration
 import gleam/dict.{type Dict}
-import gleam/erlang
+import gleam/dynamic.{type Dynamic}
 import gleam/erlang/process
 import gleam/int
 import gleam/io
 import gleam/list
 import gleam/option.{None, Some}
-import gleam/otp/task
 import gleam/result
 import gleam/string
 import simplifile
-import birl
-import birl/duration
+import tasks/task
 
 pub fn main() {
   // Do a thing in a different process
@@ -61,11 +61,11 @@ pub fn main() {
   // code though, you shouldn't need it when operating from the relative safety 
   // of Gleam land
 
-  let assert Error(_) = erlang.rescue(fn() { panic })
+  let assert Error(_) = rescue(fn() { panic })
 
   // And an example using it with tasks, shame on you for ignoring my sage advice.
   let assert Error(_) =
-    task.await(task.async(fn() { erlang.rescue(fn() { panic }) }), 1000)
+    task.await(task.async(fn() { rescue(fn() { panic }) }), 1000)
 
   // To be clear, we're talking about protecting you from weird hard to
   // uncover concurrency bugs and network issues. Gleam's static typing
@@ -73,7 +73,7 @@ pub fn main() {
   // mill index out of bounds/foo is undefined bullshit. 
   // Just have your task return a `Result`
 
-  let handle = task.async(fn() { list.at([1, 2, 3], 99) })
+  let handle = task.async(fn() { list.find([1, 2, 3], fn(x) { x == 4 }) })
 
   case task.await(handle, 1000) {
     Ok(val) -> io.println("The 100th item is" <> int.to_string(val))
@@ -84,29 +84,39 @@ pub fn main() {
   // We'll write a function that takes a list of codepoints and counts the frequency each one 
   // appears. We use a list of codepoints instead of a string because dealing with graphemes 
   // properly just distracts from the point of this exercise.
-  
+
   // Side note: If Gleam error handling is confusing for you, I've written [a short blog
   // post on the subject](https://www.benjaminpeinhardt.com/error-handling-in-gleam/)
   use workload <- result.try(simplifile.read("./src/tasks/king_james_bible.txt"))
   let workload = string.to_utf_codepoints(workload)
-  
+
   // Doing work concurrently is about finding work that can be split into repeatable
   // chunks. Therefore when trying to split work into parts, it's usually a good idea 
   // to start with the simple linear version then try to reuse it :) 
 
-  let linear_freq = time("linear frequency", fn() { linear_letter_frequency(workload) })
+  let linear_freq =
+    time("linear frequency", fn() { linear_letter_frequency(workload) })
 
   // Okay, now that that's working, let's split the work into appropriate chunks
   // and do the chunks in separate tasks
-  
-  let parallel_freq = time("parallel frequency", fn() { parallel_letter_frequency(workload, 200_000) })
-  
+
+  let parallel_freq =
+    time("parallel frequency", fn() {
+      parallel_letter_frequency(workload, 200_000)
+    })
+
   // Little sanity check
   case linear_freq == parallel_freq {
-    True -> io.println("Our parallel and linear frequency functions produced the same output")
-    False -> io.println("Our parallel and linear frequency functions produced different output")
+    True ->
+      io.println(
+        "Our parallel and linear frequency functions produced the same output",
+      )
+    False ->
+      io.println(
+        "Our parallel and linear frequency functions produced different output",
+      )
   }
-  
+
   // Returning an OK because we used result.try
   Ok(Nil)
 }
@@ -115,7 +125,7 @@ pub fn main() {
 // We fold over the list and for each codepoint we increment it's value in the list.
 fn linear_letter_frequency(input: List(UtfCodepoint)) -> Dict(UtfCodepoint, Int) {
   use acc, letter <- list.fold(input, dict.new())
-  use entry <- dict.update(acc, update: letter)
+  use entry <- dict.upsert(acc, update: letter)
   case entry {
     Some(n) -> n + 1
     None -> 1
@@ -129,16 +139,16 @@ fn parallel_letter_frequency(
   input: List(UtfCodepoint),
   chunk_size: Int,
 ) -> Dict(UtfCodepoint, Int) {
-  
   // Create chunks of work and pass them to separate tasks to be worked on
-  let handles = list.map(list.sized_chunk(input, chunk_size), fn(chunk) {
-    task.async(fn() { linear_letter_frequency(chunk) })
-  })
-  
+  let handles =
+    list.map(list.sized_chunk(input, chunk_size), fn(chunk) {
+      task.async(fn() { linear_letter_frequency(chunk) })
+    })
+
   // Fold over the handles to the tasks to await their results
   use total_freq, partial_freq_handle <- list.fold(handles, dict.new())
   let partial_freq = task.await(partial_freq_handle, 1000)
-  
+
   // Merge the results into a single structure as they come in.
   // We fold over the partial mapping we got back from the task 
   // and update the total count with it.
@@ -147,7 +157,7 @@ fn parallel_letter_frequency(
   // We don't want to await the next task until we're out of work to do.
 
   use total_freq, letter, count <- dict.fold(partial_freq, total_freq)
-  use entry <- dict.update(total_freq, letter)
+  use entry <- dict.upsert(total_freq, letter)
   case entry {
     Some(old_count) -> old_count + count
     None -> count
@@ -159,10 +169,29 @@ fn time(name: String, f: fn() -> a) -> a {
   let start = birl.now()
   let x = f()
   let end = birl.now()
-  let difference = birl.difference(end, start) |> duration.blur_to(duration.MilliSecond)
+  let difference =
+    birl.difference(end, start) |> duration.blur_to(duration.MilliSecond)
   io.println(name <> " took: " <> int.to_string(difference) <> "ms")
   x
 }
 
 // Alright, if you made it through all this, head on over to actors.gleam to see how more 
 // long running concurrent operations are handled.
+
+// region:    --- FFI
+/// Gleam doesn't offer any way to raise exceptions, but they may still occur
+/// due to bugs when working with unsafe code, such as when calling Erlang
+/// function.
+///
+/// This function will catch any error thrown and convert it into a result
+/// rather than crashing the process.
+///
+@external(erlang, "rescue_ffi", "rescue")
+pub fn rescue(a: fn() -> a) -> Result(a, Crash)
+
+pub type Crash {
+  Exited(Dynamic)
+  Thrown(Dynamic)
+  Errored(Dynamic)
+}
+// endregion: --- FFI
