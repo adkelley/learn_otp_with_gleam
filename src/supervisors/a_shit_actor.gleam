@@ -29,7 +29,7 @@ import prng/random
 /// provide a startup function to produce the initial state,
 /// instead of simply providing the initial state directly.
 /// 
-/// We'll take advantadge of getting the chance to compute
+/// We'll take advantage of getting the chance to compute
 /// things on the new process to send ourselves back a subject
 /// for the actor.
 /// 
@@ -50,7 +50,6 @@ pub fn start(
       init: fn(_) {
         let actor_subject = process.new_subject()
         process.send(parent_subject, actor_subject)
-        process.trap_exits(True)
         let selector =
           process.new_selector()
           |> process.select(actor_subject)
@@ -74,7 +73,7 @@ pub fn shutdown(subject: Subject(Message)) -> Nil {
 /// This is how we play the game.
 /// We are at the whim of the child as to whether we are a 
 /// humble duck or the mighty goose.
-pub fn play_game(subject: Subject(Message)) -> String {
+pub fn play_game(subject: Subject(Message)) -> Result(String, Nil) {
   // -> Result(String, process.CallError(String)) {
   let msg_generator = random.weighted(#(90.0, Duck), [#(10.0, Goose)])
   let msg = random.random_sample(msg_generator)
@@ -86,8 +85,8 @@ pub fn play_game(subject: Subject(Message)) -> String {
 /// Remember, any time we want to reply to a message, that message
 /// must contain a subject to reply with.
 pub type Message {
-  Duck(client: Subject(String))
-  Goose(client: Subject(String))
+  Duck(client: Subject(Result(String, Nil)))
+  Goose(client: Subject(Result(String, Nil)))
   Shutdown
 }
 
@@ -95,11 +94,11 @@ pub type Message {
 fn handle_message(state: Nil, message: Message) -> actor.Next(Nil, Message) {
   case message {
     Duck(client) -> {
-      actor.send(client, "duck")
+      actor.send(client, Ok("duck"))
       actor.continue(state)
     }
     Goose(client) -> {
-      actor.send(client, "goose!!!!")
+      actor.send(client, Error(Nil))
       actor.stop_abnormal("goose!!!!")
     }
     Shutdown -> {
