@@ -1,5 +1,11 @@
 //// Tasks are one off processes meant to easily make synchronous work async.
 //// They're really straightforward to use, just fire them off and check back later.
+//// The gleam_otp.tasks (0.16.1) module was not upgraded to gleam_otp 1.0.0.
+//// I suspect the the thinking is that, because they are mereil conveniences for
+//// spawning and awaiting tasks, it should not be part of gleam_otp
+//// I suspect the the thinking is that, because tasks are merely conveniences for
+//// spawning and awaiting tasks, it should not be part of gleam_otp. Consequently,
+//// I've taken the liberpy of porting of the module myself in tasks/task.gleam
 
 import birl
 import birl/duration

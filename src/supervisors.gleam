@@ -70,13 +70,19 @@ pub fn main() {
   let parent_subject = process.new_subject()
   let worker = duckduckgoose.start(parent_subject) |> supervision.worker()
 
+  // # times we'll play supervisors.play_game
+  let n_times = 100
+
   // We start the supervisor
   // The supervisor API is really simple. All a supervisor needs is a function
   // with which to intialize itself.
   let assert Ok(_supervisor) =
     supervisor.new(supervisor.OneForOne)
     |> supervisor.add(worker)
-    |> supervisor.restart_tolerance(100, 5000)
+    // Match the # 'times' the game is played with maximum restart intensity
+    // This ensures we can run the game 'n_times' (assuming the child process
+    // crashed 'n_times') without the supervisor crashing
+    |> supervisor.restart_tolerance(n_times, 5000)
     |> supervisor.start
 
   // The actor's init function sent us a subject for us to be able
@@ -84,11 +90,11 @@ pub fn main() {
   let assert Ok(game_subject) = process.receive(parent_subject, 1000)
 
   // Let's play the game a bit
-  play_game(parent_subject, game_subject, 100)
+  play_game(parent_subject, game_subject, n_times)
 }
 
-/// This function will play the duck duck goose game 100 times
-/// (As in 100 chances to be a goose, not 100 geese total)
+/// This function will play the duck duck goose game 'times' times
+/// (As in 'times' chances to be a goose, not 'times' geese total)
 fn play_game(
   parent_subject: Subject(Subject(duckduckgoose.Message)),
   game_subject: Subject(duckduckgoose.Message),

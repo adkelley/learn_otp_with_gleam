@@ -24,7 +24,7 @@ import prng/random
 /// directly. Instead, we'll have to send the subject
 /// to the parent process when the actor starts up.
 /// 
-/// The `actor.start_spec` function gives us more fine-grained
+/// The `actor.new_with_initialiser` function gives us more fine-grained
 /// control over how the actor gets created. We get to
 /// provide a startup function to produce the initial state,
 /// instead of simply providing the initial state directly.
@@ -34,7 +34,7 @@ import prng/random
 /// for the actor.
 /// 
 /// This isn't a hack, it's the intended design. The subject
-/// produced by the `actor.start_spec` function is for the
+/// produced by the `actor.new_with_initialiser` function is for the
 /// supervisor to use, not for us to use directly.
 fn actor_child(init init, loop loop) {
   actor.new_with_initialiser(50, init)
