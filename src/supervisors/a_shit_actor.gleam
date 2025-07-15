@@ -13,6 +13,7 @@
 
 import gleam/erlang/process.{type Subject}
 import gleam/otp/actor
+import gleam/otp/supervision.{type ChildSpecification}
 import prng/random
 
 /// Okay, well this is new.
@@ -36,32 +37,32 @@ import prng/random
 /// This isn't a hack, it's the intended design. The subject
 /// produced by the `actor.new_with_initialiser` function is for the
 /// supervisor to use, not for us to use directly.
-fn actor_child(init init, loop loop) {
-  actor.new_with_initialiser(50, init)
-  |> actor.on_message(loop)
-  |> actor.start
+fn actor_child(init init, loop loop) -> ChildSpecification(Nil) {
+  supervision.worker(fn() {
+    actor.new_with_initialiser(50, init)
+    |> actor.on_message(loop)
+    |> actor.start
+  })
 }
 
 pub fn start(
   parent_subject: Subject(Subject(Message)),
-) -> fn() -> Result(actor.Started(Nil), actor.StartError) {
-  fn() {
-    actor_child(
-      init: fn(_) {
-        let actor_subject = process.new_subject()
-        process.send(parent_subject, actor_subject)
-        let selector =
-          process.new_selector()
-          |> process.select(actor_subject)
+) -> ChildSpecification(Nil) {
+  actor_child(
+    init: fn(_) {
+      let actor_subject = process.new_subject()
+      process.send(parent_subject, actor_subject)
+      let selector =
+        process.new_selector()
+        |> process.select(actor_subject)
 
-        Ok(
-          actor.initialised(Nil)
-          |> actor.selecting(selector),
-        )
-      },
-      loop: handle_message,
-    )
-  }
+      Ok(
+        actor.initialised(Nil)
+        |> actor.selecting(selector),
+      )
+    },
+    loop: handle_message,
+  )
 }
 
 /// We provide this function in case we want to manually stop the actor,

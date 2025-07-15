@@ -56,7 +56,6 @@
 import gleam/erlang/process.{type Subject}
 import gleam/io
 import gleam/otp/static_supervisor as supervisor
-import gleam/otp/supervision
 import supervisors/a_shit_actor as duckduckgoose
 
 pub fn main() {
@@ -68,7 +67,7 @@ pub fn main() {
   // us messages with on init. Remember, it needs to send us back a subject so we 
   // can talk to it directly.
   let parent_subject = process.new_subject()
-  let worker = duckduckgoose.start(parent_subject) |> supervision.worker()
+  let worker = duckduckgoose.start(parent_subject)
 
   // # times we'll play supervisors.play_game
   let n_times = 100
